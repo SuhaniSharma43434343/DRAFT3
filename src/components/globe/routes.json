@@ -1,0 +1,19 @@
+{
+  "hub": { "name": "Dubai", "lat": 25.2, "lon": 55.27 },
+  "markets": [
+    { "name": "Kuwait", "region": 0, "lat": 29.37, "lon": 47.98 },
+    { "name": "Oman", "region": 0, "lat": 23.59, "lon": 58.41 },
+    { "name": "Iraq", "region": 0, "lat": 33.31, "lon": 44.36 },
+    { "name": "Bahrain", "region": 0, "lat": 26.07, "lon": 50.56 },
+    { "name": "Saudi Arabia", "region": 0, "lat": 24.71, "lon": 46.68 },
+    { "name": "Qatar", "region": 0, "lat": 25.29, "lon": 51.53 },
+    { "name": "India", "region": 1, "lat": 19.08, "lon": 72.88 },
+    { "name": "Sri Lanka", "region": 1, "lat": 6.93, "lon": 79.85 },
+    { "name": "Bangladesh", "region": 1, "lat": 23.81, "lon": 90.41 },
+    { "name": "Pakistan", "region": 1, "lat": 24.86, "lon": 67.01 },
+    { "name": "Guinea Conakry", "region": 2, "lat": 9.64, "lon": -13.58 },
+    { "name": "Senegal", "region": 2, "lat": 14.72, "lon": -17.47 },
+    { "name": "Ghana", "region": 2, "lat": 5.6, "lon": -0.19 },
+    { "name": "Ivory Coast", "region": 2, "lat": 5.36, "lon": -4.01 }
+  ]
+}

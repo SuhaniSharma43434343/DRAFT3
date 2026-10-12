@@ -1,0 +1,166 @@
+/* vbt-ref-fx-core / compose.css
+ * The CSS compositing floor.
+ *
+ * mix-blend-mode + isolation are Baseline since January 2020 and cover ~80% of
+ * real hero compositing at zero bytes. Reach past this file only for read-back
+ * effects. See layer-contract.md §3: dither and postfx read the composite
+ * beneath them, CSS never hands you those pixels, so they are always `texture`.
+ * There is no CSS floor for a read-back effect and none is attempted here.
+ *
+ * Blend provenance: W3C Compositing and Blending Level 1, the spec, not any
+ * implementation. Five modes. Porter-Duff source-over only.
+ *
+ * Applies to `kind: 'dom'` layers. `kind: 'texture'` layers composite inside
+ * the shared <FxCanvas> and are invisible to this file, with one exception:
+ * the canvas element is itself an .fx-layer, and the assembler gives it the
+ * data-z of the topmost texture layer it merged.
+ */
+
+/* ── The isolation group ──────────────────────────────────────────────────── */
+
+.fx-stack {
+  /* Load-bearing. Without it, mix-blend-mode blends against the *page*
+   * backdrop instead of the hero's, so grain at z5 composites over the whole
+   * site. That is the single most common bug this file exists to prevent.
+   *
+   * It pays twice: isolation:isolate also creates a stacking context, which is
+   * what makes the 0..8 scale below sufficient. No z-index: 9999 arms race,
+   * because the hero's z-indices cannot collide with the page's. */
+  isolation: isolate;
+
+  position: relative;
+
+  /* clip, not hidden: hidden creates a scroll container, which can be
+   * programmatically scrolled and interferes with sticky descendants.
+   * Contains transformed/parallaxed layers that would otherwise bleed. */
+  overflow: clip;
+
+  /* z0 must be opaque, and this is the safety net if it is not.
+   * Per W3C Compositing L1 the blend term is weighted by backdrop alpha, so
+   * over a transparent hole the blend vanishes and Co reduces to plain
+   * source-over: a soft-light grain there paints as raw noise, not as grain.
+   *
+   * JUDGEMENT CALL: house style bars literal hex in a component, but the
+   * fallback here is a defence against that visual bug, and the alternative
+   * (undefined var -> transparent) *is* the bug. Black is the null backdrop for
+   * additive light. --fx-bg is owned by palette.ts and should always be set. */
+  background-color: var(--fx-bg, #000);
+
+  /* The z-scale, mapped to layer-contract.md §1. Scoped to the stack rather
+   * than :root so two heroes on one page cannot fight, and so importing this
+   * file writes nothing into the global scope. */
+  --fx-z-backdrop: 0;     /* vbt-fx-backdrop                      full-bleed, always present */
+  --fx-z-plate: 1;        /* vbt-fx-webgl-3d | motion-video | img source imagery */
+  --fx-z-displacement: 2; /* vbt-fx-cursor                        reads z1 */
+  --fx-z-quantize: 3;     /* vbt-fx-dither                        reads z0+z1+z2, texture only */
+  --fx-z-light: 4;        /* vbt-fx-postfx                        law 4: always after quantize */
+  --fx-z-grain: 5;        /* vbt-fx-grain                         law 4: absolute last */
+  --fx-z-type: 6;         /* vbt-fx-type                          law 3: DOM, never in canvas */
+  --fx-z-wordmark: 7;     /* vbt-fx-wordmark                      DOM/SVG */
+  --fx-z-proof: 8;        /* vbt-fx-avatars                       DOM */
+}
+
+/* ── Layers ───────────────────────────────────────────────────────────────── */
+
+.fx-layer {
+  position: absolute;
+  inset: 0;
+
+  /* Decorative layers must not eat clicks meant for the type layer below the
+   * cursor. Content layers opt back in via [data-flow]. */
+  pointer-events: none;
+}
+
+/* Content layers (type, wordmark, proof) stay in flow so the hero can be sized
+ * by its text rather than by a magic height. position:relative is not cosmetic:
+ * z-index is ignored on a static element, so without it data-z silently no-ops
+ * on exactly the layers whose ordering matters most. */
+.fx-layer[data-flow] {
+  position: relative;
+  inset: auto;
+  pointer-events: auto;
+}
+
+/* data-z mirrors the manifest's ZIndex = 0|1|2|3|4|5|6|7|8 one-to-one, so the
+ * DOM is a direct readout of the recipe. An unmatched value falls through to
+ * z-index:auto (DOM order) rather than failing loudly; manifest-check.mjs is
+ * the real gate. */
+.fx-layer[data-z="0"] { z-index: var(--fx-z-backdrop); }
+.fx-layer[data-z="1"] { z-index: var(--fx-z-plate); }
+.fx-layer[data-z="2"] { z-index: var(--fx-z-displacement); }
+.fx-layer[data-z="3"] { z-index: var(--fx-z-quantize); }
+.fx-layer[data-z="4"] { z-index: var(--fx-z-light); }
+.fx-layer[data-z="5"] { z-index: var(--fx-z-grain); }
+.fx-layer[data-z="6"] { z-index: var(--fx-z-type); }
+.fx-layer[data-z="7"] { z-index: var(--fx-z-wordmark); }
+.fx-layer[data-z="8"] { z-index: var(--fx-z-proof); }
+
+/* ── Blend modes: exactly five ────────────────────────────────────────────── */
+
+/* PHOENIX and HARD_MIX will never ship in a paid template. An unlisted value
+ * matches nothing and stays at the initial `normal`, which is wrong but not
+ * broken. Adding a sixth rule here is a contract change, not a CSS edit.
+ *
+ * Reminder: opacity < 1, filter, transform, and will-change on a layer each
+ * create their own stacking context, which isolates that layer's *children*
+ * from blending. That is usually the cause of "my blend stopped working". */
+.fx-layer[data-blend="normal"]     { mix-blend-mode: normal; }
+.fx-layer[data-blend="multiply"]   { mix-blend-mode: multiply; }
+.fx-layer[data-blend="screen"]     { mix-blend-mode: screen; }
+.fx-layer[data-blend="overlay"]    { mix-blend-mode: overlay; }
+.fx-layer[data-blend="soft-light"] { mix-blend-mode: soft-light; }
+
+/* ── The poster ───────────────────────────────────────────────────────────── */
+
+/* Law 3: the LCP element is text or the poster, never the canvas.
+ *
+ * The poster is not a placeholder to be swapped out. It sits at backdrop level
+ * and is never removed once painted: the canvas fades in on top of it, so there
+ * is no LCP swap, no flash, and a correct hero survives WebGL dying mid-session
+ * (Paper Shaders throws on a missing webgl2 context; PaperSafe.tsx catches it;
+ * this is what is left underneath).
+ *
+ * It is also the entire tier:'off' render. Triggers for off, resolved in
+ * motion.ts, not here: prefers-reduced-motion, no WebGL, saveData,
+ * deviceMemory < 4, coarse pointer for cursor effects.
+ *
+ * Works as <img> or as a div with an LQIP background; object-fit is a no-op on
+ * non-replaced elements. Give the <img> fetchpriority="high" in the component,
+ * or the poster loses the LCP race it exists to win. */
+.fx-poster {
+  position: absolute;
+  inset: 0;
+  z-index: var(--fx-z-backdrop);
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background-position: center;
+  background-size: cover;
+  pointer-events: none;
+}
+
+/* ── Reduced motion ───────────────────────────────────────────────────────── */
+
+/* A floor, not the gate. The gate is tier resolution in motion.ts, because CSS
+ * cannot swap a Paper animated shader for its static-* variant. This exists
+ * because @paper-design/shaders ships zero prefers-reduced-motion handling
+ * (verified: 0 hits across the repo), so anything CSS-driven inside a hero must
+ * die here regardless of what any one skill remembered to do. */
+@media (prefers-reduced-motion: reduce) {
+  .fx-stack,
+  .fx-stack *,
+  .fx-stack *::before,
+  .fx-stack *::after {
+    /* 0.01ms, not 0: a zero-duration animation never fires animationend, and
+     * reveal choreography that awaits it would hang forever. This still fires,
+     * on the next frame. */
+    animation-duration: 0.01ms !important;
+    animation-delay: 0.01ms !important;
+    /* infinite x 0.01ms is still an infinite event loop. */
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    /* !important is required: it is beating the inline styles GSAP and motion
+     * write straight onto the element. */
+  }
+}

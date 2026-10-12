@@ -1,0 +1,192 @@
+/* vbt-fx-reveal / reveal.css
+ * The GENERAL CSS-first entrance-reveal system, for ANY element or section.
+ *
+ * MEASURED LESSON (the reason this skill is CSS-first, not a preference):
+ * the golden fixture ran the same entrance both ways. Motion-on-hydration - JS
+ * owns the from-state - put the hero behind React and Lighthouse-mobile scored
+ * LCP 10.2s (47). CSS keyframes that start at first paint scored 3.5s (90).
+ * Same look. Above-fold entrance choreography MUST paint with ZERO JavaScript.
+ *
+ * NON-DUPLICATION - read this before you reach for it on a headline:
+ *   The TYPE HEADLINE entrance is vbt-fx-type's reveal.css (its `.fx-reveal`
+ *   class: overflow-clip wrapper + per-line translateY, the LCP-critical z6
+ *   layer). THIS file is the general reveal for every OTHER element - sections,
+ *   cards, media, CTA rows, list items - and the cross-cutting SEQUENCING that
+ *   staggers a set of them into view. It is namespaced on `[data-fx-reveal]`
+ *   (an attribute) precisely so it never collides with type's `.fx-reveal`
+ *   (a class), and the two load together in one hero without fighting.
+ *   Do NOT put the hero's <h1> on [data-fx-reveal]; use type's .fx-reveal so
+ *   the LCP element keeps its measured 3.5s entrance.
+ *
+ * Usage:
+ *   <section data-fx-reveal="mask-rise" style="--fx-reveal-delay: 0.12s">...</section>
+ *   <figure  data-fx-reveal="wipe-up">...</figure>
+ *   <div data-fx-reveal-group style="--fx-reveal-step: 0.09s">
+ *     <article data-fx-reveal="mask-rise">...</article>   <!-- auto-staggered -->
+ *     <article data-fx-reveal="mask-rise">...</article>
+ *   </div>
+ *
+ * Knobs (all custom properties, so recipe params map 1:1):
+ *   --fx-reveal-delay      per-element stagger, set inline or by the group   default 0s
+ *   --fx-reveal-duration   entrance time                                     default 0.9s
+ *   --fx-reveal-ease       easing                                            default expo-out-ish
+ *   --fx-reveal-travel     mask-rise start offset                            default 2rem
+ *   --fx-reveal-step       [data-fx-reveal-group] stagger step               default 0.08s
+ *   --fx-blind-count       blind band count                                  default 6
+ *
+ * REQUIRES fx-core compose.css when used inside a `.fx-stack` hero (every
+ * contract hero loads it once from the root layout). Inside `.fx-stack`, that is
+ * the single motion gate. But this is a GENERAL reveal used on ANY element,
+ * including OUTSIDE a hero, where compose.css's `.fx-stack *` scope does not
+ * reach - so this file ALSO carries a reduced-motion block scoped to its OWN
+ * `[data-fx-reveal]` namespace (bottom of file). That is not a fork of the
+ * single gate: it collapses only THIS skill's reveals, reads the same media
+ * feature, and inside `.fx-stack` simply lands on the same 0.01ms result
+ * compose.css already guarantees. The alternative (require every reveal be a
+ * `.fx-stack` descendant) would break the skill's own "any element" promise.
+ *
+ * THE VISIBLE-ON-FAILURE INVARIANT - the one design difference from type:
+ *   For every variant the BASE (non-animation) declaration is the REVEALED
+ *   state, and the HIDDEN state lives only in the keyframe `from`, applied via
+ *   `animation-fill-mode: both` (backwards fill covers the animation-delay
+ *   window, so there is no flash-then-jump on a staggered element). The payoff:
+ *   if the animation never runs at all - animations force-disabled by a user
+ *   stylesheet or an extension, an ancient engine - the content is VISIBLE, not
+ *   stranded off-stage. A general section reveal must fail open. (Type's headline
+ *   uses a hiding base transform because its wrapper clips and its collapse is
+ *   guaranteed by compose.css; a general element has no wrapper and no such
+ *   guarantee, so it fails the other way on purpose.)
+ *
+ * CASCADE SAFETY: no rule here sets `display`, `position`, or any layout
+ * property - only transform, opacity, clip-path, mask-*, animation and custom
+ * properties. So there is no equal-specificity layout rule to silently beat
+ * (the flex-cascade trap type's reveal.css had to fix does not exist here).
+ * Selectors are attribute selectors (specificity 0,1,0): a consumer class rule
+ * outranks them, which is the intended override path for the knobs.
+ */
+
+/* ── mask-rise: a soft masked edge sweeps up as the element rises ──────────────
+ * Wrapper-free, unlike type's line-clip: the element self-masks through a
+ * mask-image gradient twice its own height (CSS Masking Module Level 1). At the
+ * revealed base the opaque half of the mask covers the box; the keyframe `from`
+ * slides the transparent half over it and drops the box by --fx-reveal-travel. */
+@keyframes fx-reveal-mask-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--fx-reveal-travel, 2rem));
+    -webkit-mask-position: 0 0;
+            mask-position: 0 0;
+  }
+  /* no `to`: the implicit 100% is the element's base style below (revealed) */
+}
+
+[data-fx-reveal="mask-rise"] {
+  /* Base = REVEALED (see the visible-on-failure invariant). The mask colour is
+   * an ALPHA marker, not a paint colour: in a mask-image only opaque-vs-
+   * transparent matters and nothing here is ever drawn on screen, so no --fx-*
+   * / dtp colour token applies. `black` is the idiomatic opaque marker. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 48%);
+          mask-image: linear-gradient(to bottom, transparent 0%, black 48%);
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 200%;
+          mask-size: 100% 200%;
+  -webkit-mask-position: 0 100%;
+          mask-position: 0 100%;
+  animation: fx-reveal-mask-rise
+    var(--fx-reveal-duration, 0.9s)
+    var(--fx-reveal-ease, cubic-bezier(0.16, 1, 0.3, 1))
+    var(--fx-reveal-delay, 0s)
+    both;
+}
+
+/* ── clip wipes: a curtain opens from one edge (CSS Masking L1, clip-path) ─────
+ * Base clip-path is inset(0) - fully revealed. Each keyframe `from` insets one
+ * edge by 100% (the box clipped to nothing), so the reveal grows from the
+ * opposite edge toward it. Direction names the fill direction. */
+@keyframes fx-reveal-wipe-up   { from { opacity: 0; clip-path: inset(100% 0 0 0); } }
+@keyframes fx-reveal-wipe-down { from { opacity: 0; clip-path: inset(0 0 100% 0); } }
+@keyframes fx-reveal-wipe-right{ from { opacity: 0; clip-path: inset(0 100% 0 0); } }
+@keyframes fx-reveal-wipe-left { from { opacity: 0; clip-path: inset(0 0 0 100%); } }
+
+[data-fx-reveal^="wipe-"] {
+  clip-path: inset(0 0 0 0); /* base = revealed */
+}
+[data-fx-reveal="wipe-up"]    { animation: fx-reveal-wipe-up    var(--fx-reveal-duration, 0.9s) var(--fx-reveal-ease, cubic-bezier(0.16, 1, 0.3, 1)) var(--fx-reveal-delay, 0s) both; }
+[data-fx-reveal="wipe-down"]  { animation: fx-reveal-wipe-down  var(--fx-reveal-duration, 0.9s) var(--fx-reveal-ease, cubic-bezier(0.16, 1, 0.3, 1)) var(--fx-reveal-delay, 0s) both; }
+[data-fx-reveal="wipe-right"] { animation: fx-reveal-wipe-right var(--fx-reveal-duration, 0.9s) var(--fx-reveal-ease, cubic-bezier(0.16, 1, 0.3, 1)) var(--fx-reveal-delay, 0s) both; }
+[data-fx-reveal="wipe-left"]  { animation: fx-reveal-wipe-left  var(--fx-reveal-duration, 0.9s) var(--fx-reveal-ease, cubic-bezier(0.16, 1, 0.3, 1)) var(--fx-reveal-delay, 0s) both; }
+
+/* ── blind: a venetian wipe, bands opening in unison ──────────────────────────
+ * A repeating mask of --fx-blind-count bands; --fx-blind-fill (0..1) is the
+ * opaque fraction of each band. Registered via @property so it interpolates
+ * (an unregistered custom property is a discrete <custom-ident> and would jump).
+ * Base fill = 1 (revealed); the keyframe `from` empties the bands. If @property
+ * is unsupported the value simply stays at its base 1 = revealed - fails open. */
+@property --fx-blind-fill {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 1;
+}
+@keyframes fx-reveal-blind { from { --fx-blind-fill: 0; } }
+
+[data-fx-reveal="blind"] {
+  --fx-blind-count: 6;
+  --fx-blind-fill: 1; /* base = revealed */
+  -webkit-mask-image: repeating-linear-gradient(
+    to bottom,
+    black 0,
+    black calc(100% / var(--fx-blind-count) * var(--fx-blind-fill)),
+    transparent calc(100% / var(--fx-blind-count) * var(--fx-blind-fill)),
+    transparent calc(100% / var(--fx-blind-count))
+  );
+          mask-image: repeating-linear-gradient(
+    to bottom,
+    black 0,
+    black calc(100% / var(--fx-blind-count) * var(--fx-blind-fill)),
+    transparent calc(100% / var(--fx-blind-count) * var(--fx-blind-fill)),
+    transparent calc(100% / var(--fx-blind-count))
+  );
+  animation: fx-reveal-blind
+    var(--fx-reveal-duration, 0.9s)
+    var(--fx-reveal-ease, cubic-bezier(0.16, 1, 0.3, 1))
+    var(--fx-reveal-delay, 0s)
+    both;
+}
+
+/* ── the cross-cutting sequencer, in pure CSS ─────────────────────────────────
+ * A reveal owns no z-layer; it orchestrates OTHER elements' entrance on the time
+ * axis. The zero-JS orchestration is a stagger: a [data-fx-reveal-group] hands
+ * each child an --fx-reveal-delay of step x index. Set --fx-reveal-step on the
+ * group (default 0.08s). Beyond the 12 listed children, set --fx-reveal-delay
+ * inline (the primary per-element path, same as type). For scroll-linked or
+ * below-fold sequencing, drive --fx-reveal-delay's JS cousin through fx-core
+ * createDriver ('scroll'/'time' source -> cssVarSink), never a hand-rolled loop:
+ * see references/sequencing.md. */
+[data-fx-reveal-group] > *:nth-child(1)  { --fx-reveal-delay: calc(var(--fx-reveal-step, 0.08s) * 0);  }
+[data-fx-reveal-group] > *:nth-child(2)  { --fx-reveal-delay: calc(var(--fx-reveal-step, 0.08s) * 1);  }
+[data-fx-reveal-group] > *:nth-child(3)  { --fx-reveal-delay: calc(var(--fx-reveal-step, 0.08s) * 2);  }
+[data-fx-reveal-group] > *:nth-child(4)  { --fx-reveal-delay: calc(var(--fx-reveal-step, 0.08s) * 3);  }
+[data-fx-reveal-group] > *:nth-child(5)  { --fx-reveal-delay: calc(var(--fx-reveal-step, 0.08s) * 4);  }
+[data-fx-reveal-group] > *:nth-child(6)  { --fx-reveal-delay: calc(var(--fx-reveal-step, 0.08s) * 5);  }
+[data-fx-reveal-group] > *:nth-child(7)  { --fx-reveal-delay: calc(var(--fx-reveal-step, 0.08s) * 6);  }
+[data-fx-reveal-group] > *:nth-child(8)  { --fx-reveal-delay: calc(var(--fx-reveal-step, 0.08s) * 7);  }
+[data-fx-reveal-group] > *:nth-child(9)  { --fx-reveal-delay: calc(var(--fx-reveal-step, 0.08s) * 8);  }
+[data-fx-reveal-group] > *:nth-child(10) { --fx-reveal-delay: calc(var(--fx-reveal-step, 0.08s) * 9);  }
+[data-fx-reveal-group] > *:nth-child(11) { --fx-reveal-delay: calc(var(--fx-reveal-step, 0.08s) * 10); }
+[data-fx-reveal-group] > *:nth-child(12) { --fx-reveal-delay: calc(var(--fx-reveal-step, 0.08s) * 11); }
+
+/* ── Reduced motion ──────────────────────────────────────────────────────────
+ * Self-gate this skill's namespace so a reveal used OUTSIDE a .fx-stack hero
+ * still honours prefers-reduced-motion (compose.css only reaches .fx-stack *).
+ * 0.01ms, not 0: a zero-duration animation never fires animationend, and any
+ * sequencing that awaits it would hang. This still fires, on the next frame,
+ * landing each element at its revealed final keyframe (fill-mode: both). Inside
+ * .fx-stack this simply co-lands with compose.css's identical collapse. */
+@media (prefers-reduced-motion: reduce) {
+  [data-fx-reveal],
+  [data-fx-reveal-group] > * {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+  }
+}

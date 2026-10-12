@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "sav-prime", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 3000 },
+    {
+      "name": "sav-prime-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/dev-preview.mjs"],
+      "port": 3100,
+      "autoPort": true
+    }
+  ]
+}
