@@ -241,7 +241,7 @@ main section:focus {
  *
  * World.tsx sets, on each beat:
  *   --h     height of its copy block, for the pin offset
- *   --p     0..1 through the beat
+ *   --p     0..1 through the beat, written on its .rule (the only reader)
  *   --in    0..1 as the block rises into the window      --out   0..1 as it leaves at the top
  *   .beat-long, --over, --q   for a block taller than the window (see below)
  * Every one of them defaults to "fully shown". If the script never runs, or stops, the copy is

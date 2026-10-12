@@ -15,7 +15,7 @@ import { clamp, smoothDamp } from "./math";
 // The copy is never hidden by this script. Each beat's block of copy is ordinary page content that
 // pins with CSS; what is written here only dresses it, from where the block really is on screen:
 //   --h     the block's height, so CSS can centre it or seat it at the foot
-//   --p     0..1 through the beat
+//   --p     0..1 through the beat (written on the beat's gold rule, which is all that reads it)
 //   --in    0..1 as the block rises into the window      --out   0..1 as it leaves at the top
 //   .beat-long / --over / --q   a block taller than the window is drawn up through it as the reader
 //                               scrolls, instead of resting with its head or foot cut off
@@ -46,6 +46,7 @@ export function World() {
     const beats = BEATS.map((b) => document.querySelector<HTMLElement>(`[data-beat="${b.key}"]`));
     const pins = beats.map((b) => b?.querySelector<HTMLElement>(".beat-pin") ?? null);
     const wraps = pins.map((p) => (p?.firstElementChild as HTMLElement | null) ?? null);
+    const rules = beats.map((b) => b?.querySelector<HTMLElement>(".rule") ?? null); // each beat's gold rule reads --p
     let chapter = "";
 
     /** Take back everything this script has written on the beats: they return to "fully shown". */
@@ -53,9 +54,10 @@ export function World() {
       beats.forEach((b) => {
         b?.removeAttribute("data-step");
         b?.classList.remove("beat-long", "beat-snap");
-        for (const v of ["--h", "--p", "--in", "--out", "--over", "--q"]) b?.style.removeProperty(v);
+        for (const v of ["--h", "--in", "--out", "--over", "--q"]) b?.style.removeProperty(v);
       });
-      root.style.removeProperty("--journey");
+      rules.forEach((r) => r?.style.removeProperty("--p"));
+      document.querySelector<HTMLElement>(".site-header")?.style.removeProperty("--journey");
     };
     const goStatic = () => {
       cancelled = true;
@@ -103,6 +105,12 @@ export function World() {
     let tall = tallQuery.matches;
     let docEnd = 1;
     let stale = true;
+    const clears = new Float64Array(BEATS.length);
+    const copies = new Float64Array(BEATS.length);
+    const leads = new Float64Array(BEATS.length);
+    // Three passes, so the browser lays the page out twice at most however many beats there are:
+    // read every block, then write what changed, then read where things ended up. (Reading and
+    // writing beat by beat would force a fresh layout of the whole page for each one.)
     const measure = () => {
       stale = false;
       view = ruler.offsetHeight || window.innerHeight;
@@ -110,39 +118,48 @@ export function World() {
       headerHeight = header?.getBoundingClientRect().height ?? 64;
       const rem = parseFloat(getComputedStyle(root).fontSize) || 16;
       const y = window.scrollY;
-      beats.forEach((b, i) => {
+      for (let i = 0; i < BEATS.length; i++) {
+        const b = beats[i];
         const pin = pins[i];
         const wrap = wraps[i];
-        if (!b || !pin || !wrap) return;
-        const clear = (parseFloat(getComputedStyle(pin).getPropertyValue("--clear")) || 5.25) * rem;
-        const copy = wrap.offsetHeight;
-        const room = view - clear - FOOT;
-        const hero = i === 0;
-        let over = Math.max(0, Math.ceil(copy - room));
+        if (!b || !pin || !wrap) continue;
+        clears[i] = (parseFloat(getComputedStyle(pin).getPropertyValue("--clear")) || 5.25) * rem;
+        copies[i] = wrap.offsetHeight;
+        leads[i] = parseFloat(getComputedStyle(b).paddingTop) || 0;
+      }
+      for (let i = 0; i < BEATS.length; i++) {
+        const b = beats[i];
+        if (!b || !pins[i] || !wraps[i]) continue;
+        let over = Math.max(0, Math.ceil(copies[i] - (view - clears[i] - FOOT)));
         if (BEATS[i].key === "products") {
           // This block changes height as its segments open and close. While it is being stepped
           // through it keeps the largest overflow seen, so the draw-through cannot lurch.
           over = heldOver = b.hasAttribute("data-step") ? Math.max(heldOver, over) : 0;
         }
         if (long[i] !== over > 1) b.classList.toggle("beat-long", (long[i] = over > 1));
-        overs[i] = long[i] ? over : 0;
-        b.style.setProperty("--over", `${overs[i]}px`);
+        over = long[i] ? over : 0;
+        if (overs[i] !== over || !b.style.getPropertyValue("--over")) b.style.setProperty("--over", `${(overs[i] = over)}px`);
+      }
+      for (let i = 0; i < BEATS.length; i++) {
+        const b = beats[i];
+        const pin = pins[i];
+        if (!b || !pin || !wraps[i]) continue;
+        const hero = i === 0;
         const r = b.getBoundingClientRect();
         tops[i] = r.top + y;
         heights[i] = r.height;
-        const lead = parseFloat(getComputedStyle(b).paddingTop) || 0;
         // A long block's frame sticks when it reaches the header and lets go when the beat's
         // end reaches the frame's foot; in between, the block is drawn up through it.
-        drawFrom[i] = hero ? 0 : lead - clear;
+        drawFrom[i] = hero ? 0 : leads[i] - clears[i];
         drawTo[i] = heights[i] - view + (hero ? 0 : FOOT);
         rests[i] = long[i]
-          ? clear
+          ? clears[i]
           : hero
             ? tall
-              ? view - copy - FOOT
-              : clear + (room - copy) / 2
+              ? view - copies[i] - FOOT
+              : clears[i] + (view - clears[i] - FOOT - copies[i]) / 2
             : parseFloat(getComputedStyle(pin).top) || 0;
-      });
+      }
       tops[BEATS.length] = tops[BEATS.length - 1] + heights[BEATS.length - 1];
       docEnd = Math.max(1, root.scrollHeight - view);
     };
@@ -251,8 +268,10 @@ export function World() {
         const now = shown[i];
         const local = y - tops[i];
         const p = clamp(local / Math.max(1, heights[i] - view));
+        // Progress changes every frame, so it is written on the one small element that reads it
+        // (the gold rule), not on the beat, where it would restyle the whole block each time.
         const ps = p.toFixed(3);
-        if (ps !== now.p) put(b, "--p", (now.p = ps));
+        if (ps !== now.p) rules[i]?.style.setProperty("--p", (now.p = ps));
         // Rising in: from nothing as the block (and the soft edge of its backing) crosses the foot
         // of the window, complete by the time it is 60% of the way to where it rests. A block still
         // below the window carries no value at all, so it can never arrive hidden.
@@ -296,8 +315,10 @@ export function World() {
         links.forEach((a) => a.classList.toggle("is-current", a.hash === `#${chapter}`));
         root.classList.toggle("at-enquiry", chapter === "contact");
       }
+      // Written on the header, its only reader. On the root element it would make the browser
+      // restyle the whole document every frame (measured: about 30 ms a frame, against under 1).
       const j = clamp(y / docEnd).toFixed(4);
-      if (j !== shownJourney) root.style.setProperty("--journey", (shownJourney = j));
+      if (j !== shownJourney) header?.style.setProperty("--journey", (shownJourney = j));
     };
 
     // If frames have stopped arriving but the reader is still scrolling, a block caught half way
